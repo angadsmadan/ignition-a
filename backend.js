@@ -868,6 +868,7 @@ async function saveAccessRequest(req) {
       email: req.email,
       name: req.name,
       market: req.market || null,
+      market_name: req.marketName || (MARKETS_DATA.find(m => m.id === req.market)?.name) || req.market || null,
       role: req.role || null,
       status: req.status || "pending",
     });
@@ -876,11 +877,13 @@ async function saveAccessRequest(req) {
 function loadAccessRequests() {
   (async () => {
     try {
-      const { data, error } = await _sb.from("access_requests").select("*").order("created_at", { ascending: true });
+      const { data, error } = await _sb.from("access_requests").select("*").order("created_at", { ascending: false });
       if (error || !data) return;
       ACCESS_REQUESTS = data.map(r => ({
         id: r.id, email: r.email, name: r.name,
-        market: r.market, role: r.role, status: r.status,
+        market: r.market,
+        marketName: r.market_name || MARKETS_DATA.find(m => m.id === r.market)?.name || r.market,
+        role: r.role, status: r.status,
         ts: r.created_at,
       }));
       typeof renderAccessRequests === "function" && renderAccessRequests();
@@ -888,6 +891,13 @@ function loadAccessRequests() {
     } catch(e) { console.warn("Supabase access_requests load failed:", e); }
   })();
 }
+
+// Real-time: notify LC instantly when a new access request comes in
+_sb.channel("access_requests_changes")
+  .on("postgres_changes", { event: "*", schema: "public", table: "access_requests" }, () => {
+    loadAccessRequests();
+  })
+  .subscribe();
 
 function loginAsGuest(email) {
   IS_LOGGED_IN = true;

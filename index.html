@@ -13226,7 +13226,6 @@ function submitAccessRequest(email, name) {
 }
 
 function grantAccessRequest(reqId) {
-  loadAccessRequests();
   const req = ACCESS_REQUESTS.find(r => r.id === reqId);
   if (!req) return;
   req.status = "granted";
@@ -13255,7 +13254,6 @@ function grantAccessRequest(reqId) {
 }
 
 function denyAccessRequest(reqId) {
-  loadAccessRequests();
   const req = ACCESS_REQUESTS.find(r => r.id === reqId);
   if (!req) return;
   req.status = "denied";
