@@ -8549,7 +8549,7 @@ function _applyPayload(payload) {
   if (payload.tasks && Array.isArray(payload.tasks)) TASKS = payload.tasks;
   if (payload.milestones && Array.isArray(payload.milestones)) MILESTONES = payload.milestones;
   if (payload.activity && Array.isArray(payload.activity)) ACTIVITY = payload.activity;
-  if (payload.currentUserId) CURRENT_USER_ID = payload.currentUserId;
+  // currentUserId is owned by the session (ignition_session) — never restore from shared state
   if (payload.launchState) LAUNCH_STATE = payload.launchState;
   if (payload.day0CalledAt) DAY0_CALLED_AT = payload.day0CalledAt;
   if (payload.day0Values) DAY0_VALUES = payload.day0Values;
