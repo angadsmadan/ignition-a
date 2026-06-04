@@ -8557,26 +8557,28 @@ function _applyPayload(payload) {
     ROLES = ROLES.filter(r => !r._day0Created).concat(payload.day0Roles);
   }
   if (payload.marketsData && Array.isArray(payload.marketsData)) MARKETS_DATA = payload.marketsData;
-  if (payload.userRegistry && Array.isArray(payload.userRegistry)) USER_REGISTRY = payload.userRegistry;
+  if (payload.userRegistry && Array.isArray(payload.userRegistry)) {
+    USER_REGISTRY = payload.userRegistry;
+    // Keep ROLES in sync so currentUser() can find every registered user
+    USER_REGISTRY.forEach(u => {
+      if (!ROLES.find(r => r.id === u.id)) ROLES.push({ id: u.id, name: u.name, role: u.role, fn: u.fn, initials: u.initials, color: u.color });
+    });
+  }
   if (payload.activeMarketId) ACTIVE_MARKET_ID = payload.activeMarketId;
 }
 
-function loadState() {
-  // Sync load from localStorage so the app starts immediately
+async function loadState() {
+  // Load localStorage first as a quick seed
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) { _applyPayload(JSON.parse(raw)); }
   } catch(e) {}
-  // Then fetch latest from Supabase and patch in the background
-  (async () => {
-    try {
-      const marketId = ACTIVE_MARKET_ID || "default";
-      const { data, error } = await _sb.from("market_state").select("state").eq("id", marketId).single();
-      if (error || !data) return;
-      _applyPayload(data.state);
-      typeof refresh === "function" && refresh();
-    } catch(e) { console.warn("Supabase load failed:", e); }
-  })();
+  // Await Supabase so boot doesn't render until real data is ready
+  try {
+    const marketId = ACTIVE_MARKET_ID || "default";
+    const { data, error } = await _sb.from("market_state").select("state").eq("id", marketId).single();
+    if (!error && data) _applyPayload(data.state);
+  } catch(e) { console.warn("Supabase load failed:", e); }
   return true;
 }
 
@@ -10129,7 +10131,7 @@ function navigate(view, force) {
   if (view !== "playbook" && typeof pbHideBackButton === "function") pbHideBackButton();
   if (view === "markets") { renderMarketsView(); }
   if (view === "access")  { if (!isLaunchControl(CURRENT_USER_ID)) { navigate("dashboard"); return; } renderAccessView(); accessStep(1); }
-  if (view === "dashboard") { applyLCDashboard(); }
+  if (view === "dashboard") { applyLCDashboard(); loadAccessRequests(); }
   refresh();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -14861,7 +14863,7 @@ function saveUserAccess() {
 
 // ─── Boot hook: always require login on every page load ──────────────────────
 async function bootWithAuth() {
-  loadState();
+  await loadState();
   loadAccessRequests();
   // Ensure master account always exists
   if (!USER_REGISTRY.find(u => u.id === "master")) {
