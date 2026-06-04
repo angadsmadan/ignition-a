@@ -1103,6 +1103,7 @@ async function bootWithAuth() {
       document.getElementById("top-nav").style.display = "";
       const mbn = document.getElementById("mobile-bottom-nav");
       if (mbn) mbn.style.display = "";
+      refreshUserUI();
       navigate("dashboard");
     } else {
       showLoginScreen();
