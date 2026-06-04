@@ -1,0 +1,24 @@
+{
+  "name": "ignition-a",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "serve . -l ${PORT:-3000}"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/angadsmadan/ignition-a.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/angadsmadan/ignition-a/issues"
+  },
+  "homepage": "https://github.com/angadsmadan/ignition-a#readme",
+  "dependencies": {
+    "serve": "^14.2.6"
+  }
+}
