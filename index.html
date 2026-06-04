@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23facc15'/%3E%3Cstop offset='1' stop-color='%23ef4444'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='5' fill='url(%23g)'/%3E%3Cg stroke='white' stroke-width='2' stroke-linecap='round' fill='none'%3E%3Cpath d='M12 4v4'/%3E%3Cpath d='M12 16v4'/%3E%3Cpath d='M4 12h4'/%3E%3Cpath d='M16 12h4'/%3E%3Cpath d='M6.3 6.3l2.8 2.8'/%3E%3Cpath d='M14.9 14.9l2.8 2.8'/%3E%3Cpath d='M6.3 17.7l2.8-2.8'/%3E%3Cpath d='M14.9 9.1l2.8-2.8'/%3E%3C/g%3E%3C/svg%3E"/>
 <script>window.tailwind = window.tailwind || {}; if (typeof tailwind !== 'undefined' && tailwind.config) tailwind.config = { ...tailwind.config };</script>
 <script src="https://cdn.tailwindcss.com?plugins="></script>
+<script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
 <style>
   body { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; background: #0a0a0a; color: #e5e5e5; -webkit-font-smoothing: antialiased; line-height: 1.5; }
@@ -873,6 +874,18 @@
         <p class="text-sm text-neutral-500 mt-1">Click any market to open its dashboard.</p>
       </div>
       <div id="lc-markets-grid" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"></div>
+
+      <!-- Access Requests panel — Launch Control only -->
+      <div class="mt-8">
+        <div class="flex items-center gap-2 mb-4">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="text-sm font-semibold text-neutral-300">Access Requests</span>
+          <span id="access-requests-badge" style="display:none;" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30"></span>
+        </div>
+        <div id="access-requests-panel" style="background:#0e0e0e;border:1px solid #1e1e1e;border-radius:16px;padding:4px 16px;">
+          <div style="font-size:13px;color:#3a3a3a;text-align:center;padding:16px 0;">No pending access requests</div>
+        </div>
+      </div>
     </div>
 
     <!-- ===== Back to markets (LC only, shown when drilled in) ===== -->
@@ -7182,13 +7195,13 @@
         </div>
 
         <!-- Main title — large -->
-        <div style="font-family:'DM Sans',sans-serif;font-size:clamp(28px,8vw,42px);font-weight:300;letter-spacing:-0.5px;color:#fff;line-height:1.1;margin-bottom:6px;">
+        <div style="font-family:'DM Sans',sans-serif;font-size:clamp(28px,8vw,42px);font-weight:300;letter-spacing:-0.5px;color:#fff;line-height:1.1;margin-bottom:8px;">
           Ignition
-          <span style="background:linear-gradient(90deg,#fbbf24,#f97316,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">&nbsp;&middot;&nbsp;noon</span>
+          <span style="background:linear-gradient(90deg,#fbbf24,#f97316,#ef4444);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;">&nbsp;&middot;&nbsp;noon Minutes</span>
         </div>
-        <!-- Subtitle — smaller -->
-        <div style="font-family:'DM Sans',sans-serif;font-size:11px;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.3);margin-bottom:4px;">Market Launch System</div>
-        <div style="font-size:13px;color:rgba(255,255,255,0.25);">Sign in to access your markets and tasks</div>
+        <!-- Subtitle — larger now -->
+        <div style="font-family:'DM Sans',sans-serif;font-size:15px;font-weight:500;letter-spacing:0.04em;color:rgba(255,255,255,0.45);margin-bottom:4px;">Market Launch System</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.2);">Sign in to access your markets and tasks</div>
       </div>
 
       <!-- Form card -->
@@ -13876,14 +13889,319 @@ function togglePasswordVisibility() {
     : '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
 }
 
-function triggerGoogleLogin() {
-  // When deployed on Railway: wire up real Google OAuth here
-  // e.g. window.location.href = "/auth/google";
-  const errEl = document.getElementById("login-error");
-  errEl.textContent = "Google Sign-In requires the app to be deployed on Railway. Enter your email and password below instead.";
-  errEl.style.display = "block";
-  setTimeout(() => errEl.style.display = "none", 6000);
-  document.getElementById("login-email").focus();
+// ── Access Requests store ────────────────────────────────────────────────────
+let ACCESS_REQUESTS = []; // { id, email, name, market, role, ts, status: 'pending'|'granted'|'denied' }
+
+function saveAccessRequests() {
+  try { localStorage.setItem("ignition_access_requests", JSON.stringify(ACCESS_REQUESTS)); } catch(e) {}
+}
+function loadAccessRequests() {
+  try {
+    const raw = localStorage.getItem("ignition_access_requests");
+    if (raw) ACCESS_REQUESTS = JSON.parse(raw);
+  } catch(e) {}
+}
+
+// ── Guest (view-only) login ──────────────────────────────────────────────────
+function loginAsGuest(email) {
+  IS_LOGGED_IN = true;
+  LOGGED_IN_EMAIL = email;
+  CURRENT_USER_ID = "__guest__";
+  // Synthesise a transient guest entry (not saved to USER_REGISTRY)
+  window.__GUEST_EMAIL__ = email;
+  const firstName = email.split("@")[0].split(".")[0];
+  const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1);
+  window.__GUEST_NAME__ = displayName;
+
+  document.getElementById("view-login").classList.add("hidden");
+  showLoader(displayName, function() {
+    document.getElementById("top-nav").style.display = "none"; // no top nav for guests
+    const mbn = document.getElementById("mobile-bottom-nav");
+    if (mbn) mbn.style.display = "none";
+    showSeekAccessView();
+  });
+}
+
+// ── Seek Access view ─────────────────────────────────────────────────────────
+function showSeekAccessView() {
+  document.querySelectorAll(".view").forEach(v => v.classList.add("hidden"));
+  let el = document.getElementById("view-seek-access");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "view-seek-access";
+    el.style.cssText = "position:fixed;inset:0;z-index:50;background:#0a0a0a;overflow-y:auto;display:flex;flex-direction:column;";
+    el.innerHTML = buildSeekAccessHTML();
+    document.body.appendChild(el);
+  } else {
+    el.innerHTML = buildSeekAccessHTML();
+    el.style.display = "flex";
+  }
+}
+
+function buildSeekAccessHTML() {
+  const email = window.__GUEST_EMAIL__ || LOGGED_IN_EMAIL || "";
+  const name  = window.__GUEST_NAME__ || email.split("@")[0];
+  const markets = MARKETS_DATA.map(m =>
+    `<option value="${m.id}">${m.name}</option>`
+  ).join("");
+  const roles = ["Operations", "Commercial", "Supply Chain", "Finance", "Marketing", "IT", "HR", "Viewer"].map(r =>
+    `<option value="${r}">${r}</option>`
+  ).join("");
+
+  // Check if this email already has a pending request
+  const existing = ACCESS_REQUESTS.find(r => r.email === email && r.status === "pending");
+  const granted  = ACCESS_REQUESTS.find(r => r.email === email && r.status === "granted");
+
+  let formOrStatus = "";
+  if (granted) {
+    formOrStatus = `
+      <div style="padding:20px 24px;border-radius:14px;background:rgba(34,197,94,0.08);border:1px solid rgba(34,197,94,0.3);text-align:center;">
+        <div style="font-size:28px;margin-bottom:8px;">✓</div>
+        <div style="font-size:15px;font-weight:600;color:#86efac;margin-bottom:4px;">Access Granted</div>
+        <div style="font-size:13px;color:#a3a3a3;margin-bottom:16px;">Your access has been approved. Sign in again to continue.</div>
+        <button onclick="signOut()" style="padding:10px 24px;border-radius:10px;background:linear-gradient(135deg,#fbbf24,#ef4444);color:#000;font-weight:700;font-size:14px;border:none;cursor:pointer;">Sign in again</button>
+      </div>`;
+  } else if (existing) {
+    formOrStatus = `
+      <div style="padding:20px 24px;border-radius:14px;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);text-align:center;">
+        <div style="font-size:13px;font-weight:600;color:#fde68a;margin-bottom:4px;">Request pending</div>
+        <div style="font-size:13px;color:#a3a3a3;">Your request for <strong style="color:#e5e5e5;">${existing.market.toUpperCase()} · ${existing.role}</strong> has been sent. Sid, Ali or Angad will approve it shortly.</div>
+      </div>`;
+  } else {
+    formOrStatus = `
+      <div style="margin-bottom:16px;">
+        <label style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#525252;display:block;margin-bottom:6px;">Market</label>
+        <select id="seek-market" style="width:100%;background:#141414;border:1px solid #262626;border-radius:10px;padding:11px 14px;font-size:14px;color:#e5e5e5;outline:none;font-family:inherit;">
+          <option value="">Select a market…</option>
+          ${markets}
+        </select>
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="font-size:10px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:#525252;display:block;margin-bottom:6px;">Role</label>
+        <select id="seek-role" style="width:100%;background:#141414;border:1px solid #262626;border-radius:10px;padding:11px 14px;font-size:14px;color:#e5e5e5;outline:none;font-family:inherit;">
+          <option value="">Select a role…</option>
+          ${roles}
+        </select>
+      </div>
+      <div id="seek-error" style="display:none;font-size:13px;color:#fca5a5;margin-bottom:12px;"></div>
+      <button onclick="submitAccessRequest('${email}','${name}')"
+        style="width:100%;padding:13px;border-radius:12px;background:linear-gradient(135deg,#fbbf24,#ef4444);color:#000;font-weight:700;font-size:14px;border:none;cursor:pointer;">
+        Request Access →
+      </button>`;
+  }
+
+  return `
+    <!-- top bar -->
+    <div style="padding:16px 24px;border-bottom:1px solid #161616;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div style="width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#fbbf24,#ef4444);display:flex;align-items:center;justify-content:center;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#000" stroke-width="2.5" stroke-linecap="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        </div>
+        <span style="font-size:14px;font-weight:600;color:#e5e5e5;">Ignition <span style="color:#525252;">·</span> noon Minutes</span>
+      </div>
+      <button onclick="signOut()" style="font-size:12px;color:#525252;background:none;border:none;cursor:pointer;padding:6px 10px;border-radius:8px;transition:color 0.15s;" onmouseover="this.style.color='#e5e5e5'" onmouseout="this.style.color='#525252'">Sign out</button>
+    </div>
+
+    <!-- main content -->
+    <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 24px;">
+      <div style="width:100%;max-width:400px;">
+
+        <!-- Header -->
+        <div style="text-align:center;margin-bottom:32px;">
+          <div style="width:52px;height:52px;border-radius:14px;background:#141414;border:1px solid #262626;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#a3a3a3" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          </div>
+          <div style="font-size:22px;font-weight:600;color:#fafafa;margin-bottom:6px;">You don't have access yet</div>
+          <div style="font-size:14px;color:#525252;line-height:1.5;">
+            <span style="color:#a3a3a3;">${email}</span><br>
+            Choose a market and role below to request access from the Launch Control team.
+          </div>
+        </div>
+
+        <!-- Form or status -->
+        <div style="background:#111;border:1px solid #1e1e1e;border-radius:16px;padding:24px;">
+          ${formOrStatus}
+        </div>
+
+        <div style="text-align:center;margin-top:20px;font-size:12px;color:#3a3a3a;">
+          Access is granted by Sid, Ali or Angad from Launch Control
+        </div>
+      </div>
+    </div>`;
+}
+
+function submitAccessRequest(email, name) {
+  const market = document.getElementById("seek-market");
+  const role   = document.getElementById("seek-role");
+  const errEl  = document.getElementById("seek-error");
+  if (!market || !market.value) { errEl.textContent = "Please select a market."; errEl.style.display = "block"; return; }
+  if (!role   || !role.value)   { errEl.textContent = "Please select a role.";   errEl.style.display = "block"; return; }
+  errEl.style.display = "none";
+
+  const req = {
+    id: "req_" + Date.now(),
+    email, name,
+    market: market.value,
+    marketName: MARKETS_DATA.find(m => m.id === market.value)?.name || market.value,
+    role: role.value,
+    ts: new Date().toISOString(),
+    status: "pending"
+  };
+  loadAccessRequests();
+  ACCESS_REQUESTS.unshift(req);
+  saveAccessRequests();
+
+  // Refresh the seek-access view to show pending state
+  showSeekAccessView();
+}
+
+function grantAccessRequest(reqId) {
+  loadAccessRequests();
+  const req = ACCESS_REQUESTS.find(r => r.id === reqId);
+  if (!req) return;
+  req.status = "granted";
+  saveAccessRequests();
+
+  // Add user to registry if not already there
+  const existing = USER_REGISTRY.find(u => u.email === req.email);
+  if (!existing) {
+    const newId = req.email.split("@")[0].replace(/[^a-z0-9]/gi, "").toLowerCase();
+    USER_REGISTRY.push({
+      id: newId,
+      name: req.name || req.email.split("@")[0],
+      email: req.email,
+      role: req.role,
+      fn: req.role,
+      markets: [req.market]
+    });
+    saveState();
+  } else {
+    if (!existing.markets.includes(req.market)) existing.markets.push(req.market);
+    saveState();
+  }
+
+  renderAccessRequests();
+  toast("✓ Access granted to " + (req.name || req.email));
+}
+
+function denyAccessRequest(reqId) {
+  loadAccessRequests();
+  const req = ACCESS_REQUESTS.find(r => r.id === reqId);
+  if (!req) return;
+  req.status = "denied";
+  saveAccessRequests();
+  renderAccessRequests();
+  toast("Request denied.");
+}
+
+// ── Render pending access requests panel (called from dashboard for LC) ───────
+function renderAccessRequests() {
+  loadAccessRequests();
+  const pending = ACCESS_REQUESTS.filter(r => r.status === "pending");
+  const el = document.getElementById("access-requests-panel");
+  if (!el) return;
+
+  if (pending.length === 0) {
+    el.innerHTML = `<div style="font-size:13px;color:#3a3a3a;text-align:center;padding:16px 0;">No pending access requests</div>`;
+    return;
+  }
+
+  el.innerHTML = pending.map(r => `
+    <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #1a1a1a;">
+      <div style="width:36px;height:36px;border-radius:10px;background:#141414;border:1px solid #222;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;font-weight:600;color:#a3a3a3;">
+        ${(r.name || r.email)[0].toUpperCase()}
+      </div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:500;color:#e5e5e5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.name || r.email.split("@")[0]}</div>
+        <div style="font-size:11px;color:#525252;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.email}</div>
+        <div style="font-size:11px;color:#737373;margin-top:2px;">${r.marketName} · ${r.role}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button onclick="grantAccessRequest('${r.id}')"
+          style="padding:6px 12px;border-radius:8px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#86efac;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
+          Grant
+        </button>
+        <button onclick="denyAccessRequest('${r.id}')"
+          style="padding:6px 12px;border-radius:8px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);color:#f87171;font-size:12px;font-weight:600;cursor:pointer;">
+          Deny
+        </button>
+      </div>
+    </div>
+  `).join("");
+}
+
+// ── Auth0 configuration ──────────────────────────────────────────────────────
+const AUTH0_DOMAIN    = "dev-vaja32qf7o1yfzhg.us.auth0.com";
+const AUTH0_CLIENT_ID = "JRrJFLZKCYipLUYC9CIClLeBmFuwWvax";
+const AUTH0_REDIRECT  = "https://ignition-a-production.up.railway.app";
+
+let auth0Client = null;
+
+async function getAuth0Client() {
+  if (auth0Client) return auth0Client;
+  auth0Client = await window.auth0.createAuth0Client({
+    domain:    AUTH0_DOMAIN,
+    clientId:  AUTH0_CLIENT_ID,
+    authorizationParams: {
+      redirect_uri: AUTH0_REDIRECT,
+      connection:   "google-oauth2",
+    },
+    cacheLocation: "localstorage",
+  });
+  return auth0Client;
+}
+
+async function triggerGoogleLogin() {
+  try {
+    const client = await getAuth0Client();
+    await client.loginWithRedirect({
+      authorizationParams: {
+        connection:   "google-oauth2",
+        redirect_uri: AUTH0_REDIRECT,
+      }
+    });
+  } catch (e) {
+    console.error("Auth0 login error:", e);
+    const errEl = document.getElementById("login-error");
+    if (errEl) {
+      errEl.textContent = "Google Sign-In failed. Try again or use email/password below.";
+      errEl.style.display = "block";
+      setTimeout(() => errEl.style.display = "none", 5000);
+    }
+  }
+}
+
+// Handle Auth0 redirect callback on page load
+async function handleAuth0Callback() {
+  // Only run if there's a code+state in the URL (Auth0 redirect)
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("code") && !params.has("state")) return false;
+
+  try {
+    const client = await getAuth0Client();
+    await client.handleRedirectCallback();
+    // Clean URL
+    window.history.replaceState({}, document.title, AUTH0_REDIRECT);
+
+    const user = await client.getUser();
+    if (!user || !user.email) return false;
+
+    const email = user.email.toLowerCase();
+    // Map Auth0 user to registry
+    const regUser = USER_REGISTRY.find(u => u.email === email);
+    if (regUser) {
+      loginAs(regUser.id, email);
+    } else {
+      // Not in registry — guest/seek-access flow
+      loginAsGuest(email);
+    }
+    return true;
+  } catch (e) {
+    console.error("Auth0 callback error:", e);
+    // Bad callback — clean URL and show login
+    window.history.replaceState({}, document.title, AUTH0_REDIRECT);
+    return false;
+  }
 }
 
 function attemptLogin() {
@@ -13906,15 +14224,21 @@ function attemptLogin() {
     if (master) { loginAs(master.id, email); return; }
   }
 
+  // Non-noon emails get guest view-only access too
   if (!email.endsWith("@noon.com")) {
-    errEl.textContent = "Only @noon.com or master@ignition.com accounts are supported.";
-    errEl.style.display = "block"; return;
+    if (!email.includes("@") || !email.includes(".")) {
+      errEl.textContent = "Please enter a valid email address.";
+      errEl.style.display = "block"; return;
+    }
+    loginAsGuest(email);
+    return;
   }
 
   const user = USER_REGISTRY.find(u => u.email === email);
   if (!user) {
-    errEl.textContent = "No account found for " + email + ". Ask your admin to grant access.";
-    errEl.style.display = "block"; return;
+    // Unknown noon.com user — grant view-only access and prompt them to request
+    loginAsGuest(email);
+    return;
   }
 
   const expectedPw = USER_PASSWORDS[email] || DEFAULT_NOON_PASSWORD;
@@ -14038,8 +14362,15 @@ function loginDemo() {
 function signOut() {
   IS_LOGGED_IN = false;
   LOGGED_IN_EMAIL = null;
+  CURRENT_USER_ID = "sid";
+  window.__GUEST_EMAIL__ = null;
+  window.__GUEST_NAME__ = null;
   localStorage.removeItem(STORAGE_KEY);
+  const sa = document.getElementById("view-seek-access");
+  if (sa) sa.style.display = "none";
   document.getElementById("top-nav").style.display = "none";
+  const mbn = document.getElementById("mobile-bottom-nav");
+  if (mbn) mbn.style.display = "none";
   showLoginScreen();
 }
 
@@ -14320,6 +14651,15 @@ function renderLCMarketsGrid() {
       </div>
     </div>`;
   }).join("");
+
+  // Refresh access requests panel + badge
+  renderAccessRequests();
+  const badge = document.getElementById("access-requests-badge");
+  if (badge) {
+    const pendingCount = ACCESS_REQUESTS.filter(r => r.status === "pending").length;
+    if (pendingCount > 0) { badge.textContent = pendingCount; badge.style.display = "inline-flex"; }
+    else { badge.style.display = "none"; }
+  }
 }
 
 // Called whenever dashboard view is navigated to
@@ -14457,8 +14797,9 @@ function saveUserAccess() {
 // navigate, renderRoleMenu, saveState, loadState — all patched in-place above; no overrides needed here.
 
 // ─── Boot hook: always require login on every page load ──────────────────────
-function bootWithAuth() {
+async function bootWithAuth() {
   loadState();
+  loadAccessRequests();
   // Ensure master account always exists
   if (!USER_REGISTRY.find(u => u.id === "master")) {
     USER_REGISTRY.push({ id: "master", name: "Master Admin", email: "master@ignition.com", role: "Super Admin", fn: null, markets: MARKETS_DATA.map(m => m.id), initials: "MA", color: "bg-orange-500" });
@@ -14470,7 +14811,12 @@ function bootWithAuth() {
   USER_REGISTRY.forEach(u => {
     if (!ROLES.find(r => r.id === u.id)) ROLES.push({ id: u.id, name: u.name, role: u.role, fn: u.fn, initials: u.initials, color: u.color });
   });
-  showLoginScreen();
+
+  // Check if this is an Auth0 redirect callback — if so, handle it and skip login screen
+  const handledCallback = await handleAuth0Callback();
+  if (!handledCallback) {
+    showLoginScreen();
+  }
 }
 
 
