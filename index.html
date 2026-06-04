@@ -8,6 +8,12 @@
 <script>window.tailwind = window.tailwind || {}; if (typeof tailwind !== 'undefined' && tailwind.config) tailwind.config = { ...tailwind.config };</script>
 <script src="https://cdn.tailwindcss.com?plugins="></script>
 <script src="https://cdn.auth0.com/js/auth0-spa-js/2.0/auth0-spa-js.production.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+  const SUPABASE_URL = "https://ywkboxhxxldfwdadcjds.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl3a2JveGh4eGxkZndkYWRjamRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA1NzIwMDgsImV4cCI6MjA5NjE0ODAwOH0.BKDHJuVAll4pTjrHj0LjbCdrdVmi3IHn17JXaD3BT_Y";
+  const _sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+</script>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap" rel="stylesheet">
 <style>
   body { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif; background: #0a0a0a; color: #e5e5e5; -webkit-font-smoothing: antialiased; line-height: 1.5; }
@@ -8506,56 +8512,91 @@ function canDeleteTask(task) {
 }
 
 // ----- Persistence ----------------------------------------------------------
+let _saveTimer = null;
 function saveState() {
-  try {
-    const payload = {
-      version: 1,
-      savedAt: new Date().toISOString(),
-      currentUserId: CURRENT_USER_ID,
-      tasks: TASKS,
-      milestones: MILESTONES,
-      activity: ACTIVITY.slice(0, 50),
-      launchState: LAUNCH_STATE,
-      day0CalledAt: DAY0_CALLED_AT,
-      day0Values: DAY0_VALUES,
-      day0Roles: ROLES.filter(r => r._day0Created),
-      marketsData: MARKETS_DATA,
-      userRegistry: USER_REGISTRY,
-      activeMarketId: ACTIVE_MARKET_ID,
-    };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-  } catch (e) {
-    console.warn("Could not save state to localStorage:", e);
-  }
+  const payload = {
+    version: 1,
+    savedAt: new Date().toISOString(),
+    currentUserId: CURRENT_USER_ID,
+    tasks: TASKS,
+    milestones: MILESTONES,
+    activity: ACTIVITY.slice(0, 50),
+    launchState: LAUNCH_STATE,
+    day0CalledAt: DAY0_CALLED_AT,
+    day0Values: DAY0_VALUES,
+    day0Roles: ROLES.filter(r => r._day0Created),
+    marketsData: MARKETS_DATA,
+    userRegistry: USER_REGISTRY,
+    activeMarketId: ACTIVE_MARKET_ID,
+  };
+  // Keep localStorage as instant local fallback
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(payload)); } catch(e) {}
+  // Debounce Supabase writes to avoid hammering on rapid changes
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(async () => {
+    try {
+      await _sb.from("market_state").upsert({
+        id: ACTIVE_MARKET_ID || "default",
+        state: payload,
+        updated_at: new Date().toISOString(),
+        updated_by: CURRENT_USER_ID,
+      });
+    } catch(e) { console.warn("Supabase save failed:", e); }
+  }, 800);
 }
+
+function _applyPayload(payload) {
+  if (payload.tasks && Array.isArray(payload.tasks)) TASKS = payload.tasks;
+  if (payload.milestones && Array.isArray(payload.milestones)) MILESTONES = payload.milestones;
+  if (payload.activity && Array.isArray(payload.activity)) ACTIVITY = payload.activity;
+  if (payload.currentUserId) CURRENT_USER_ID = payload.currentUserId;
+  if (payload.launchState) LAUNCH_STATE = payload.launchState;
+  if (payload.day0CalledAt) DAY0_CALLED_AT = payload.day0CalledAt;
+  if (payload.day0Values) DAY0_VALUES = payload.day0Values;
+  if (payload.day0Roles && Array.isArray(payload.day0Roles)) {
+    ROLES = ROLES.filter(r => !r._day0Created).concat(payload.day0Roles);
+  }
+  if (payload.marketsData && Array.isArray(payload.marketsData)) MARKETS_DATA = payload.marketsData;
+  if (payload.userRegistry && Array.isArray(payload.userRegistry)) USER_REGISTRY = payload.userRegistry;
+  if (payload.activeMarketId) ACTIVE_MARKET_ID = payload.activeMarketId;
+}
+
 function loadState() {
+  // Sync load from localStorage so the app starts immediately
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return false;
-    const payload = JSON.parse(raw);
-    if (payload.tasks && Array.isArray(payload.tasks)) TASKS = payload.tasks;
-    if (payload.milestones && Array.isArray(payload.milestones)) MILESTONES = payload.milestones;
-    if (payload.activity && Array.isArray(payload.activity)) ACTIVITY = payload.activity;
-    if (payload.currentUserId) CURRENT_USER_ID = payload.currentUserId;
-    if (payload.launchState) LAUNCH_STATE = payload.launchState;
-    if (payload.day0CalledAt) DAY0_CALLED_AT = payload.day0CalledAt;
-    if (payload.day0Values) DAY0_VALUES = payload.day0Values;
-    if (payload.day0Roles && Array.isArray(payload.day0Roles)) {
-      ROLES = ROLES.filter(r => !r._day0Created).concat(payload.day0Roles);
-    }
-    if (payload.marketsData && Array.isArray(payload.marketsData)) MARKETS_DATA = payload.marketsData;
-    if (payload.userRegistry && Array.isArray(payload.userRegistry)) USER_REGISTRY = payload.userRegistry;
-    if (payload.activeMarketId) ACTIVE_MARKET_ID = payload.activeMarketId;
-    return true;
-  } catch (e) {
-    console.warn("Could not load saved state:", e);
-    return false;
-  }
+    if (raw) { _applyPayload(JSON.parse(raw)); }
+  } catch(e) {}
+  // Then fetch latest from Supabase and patch in the background
+  (async () => {
+    try {
+      const marketId = ACTIVE_MARKET_ID || "default";
+      const { data, error } = await _sb.from("market_state").select("state").eq("id", marketId).single();
+      if (error || !data) return;
+      _applyPayload(data.state);
+      typeof refresh === "function" && refresh();
+    } catch(e) { console.warn("Supabase load failed:", e); }
+  })();
+  return true;
 }
+
+// Real-time: re-render whenever another user saves state for the active market
+_sb.channel("market_state_changes")
+  .on("postgres_changes", { event: "UPDATE", schema: "public", table: "market_state" }, (payload) => {
+    if (payload.new && payload.new.id === (ACTIVE_MARKET_ID || "default") && payload.new.updated_by !== CURRENT_USER_ID) {
+      _applyPayload(payload.new.state);
+      typeof refresh === "function" && refresh();
+    }
+  })
+  .subscribe();
+
 function resetState() {
-  if (!confirm("Reset all changes? This will reload the page and clear edits, status changes and activity history made in this browser.")) return;
+  if (!confirm("Reset all changes? This will reload the page and clear edits, status changes and activity history.")) return;
   localStorage.removeItem(STORAGE_KEY);
-  location.reload();
+  (async () => {
+    try { await _sb.from("market_state").delete().eq("id", ACTIVE_MARKET_ID || "default"); } catch(e) {}
+    location.reload();
+  })();
 }
 function exportState() {
   const payload = {
@@ -13893,13 +13934,33 @@ function togglePasswordVisibility() {
 let ACCESS_REQUESTS = []; // { id, email, name, market, role, ts, status: 'pending'|'granted'|'denied' }
 
 function saveAccessRequests() {
-  try { localStorage.setItem("ignition_access_requests", JSON.stringify(ACCESS_REQUESTS)); } catch(e) {}
+  // No-op: individual request saves happen via saveAccessRequest()
+}
+async function saveAccessRequest(req) {
+  try {
+    await _sb.from("access_requests").upsert({
+      id: req.id,
+      email: req.email,
+      name: req.name,
+      market: req.market || null,
+      role: req.role || null,
+      status: req.status || "pending",
+    });
+  } catch(e) { console.warn("Supabase access_requests save failed:", e); }
 }
 function loadAccessRequests() {
-  try {
-    const raw = localStorage.getItem("ignition_access_requests");
-    if (raw) ACCESS_REQUESTS = JSON.parse(raw);
-  } catch(e) {}
+  (async () => {
+    try {
+      const { data, error } = await _sb.from("access_requests").select("*").order("created_at", { ascending: true });
+      if (error || !data) return;
+      ACCESS_REQUESTS = data.map(r => ({
+        id: r.id, email: r.email, name: r.name,
+        market: r.market, role: r.role, status: r.status,
+        ts: r.created_at,
+      }));
+      typeof renderManageAccess === "function" && renderManageAccess();
+    } catch(e) { console.warn("Supabase access_requests load failed:", e); }
+  })();
 }
 
 // ── Guest (view-only) login ──────────────────────────────────────────────────
@@ -14049,7 +14110,7 @@ function submitAccessRequest(email, name) {
   };
   loadAccessRequests();
   ACCESS_REQUESTS.unshift(req);
-  saveAccessRequests();
+  saveAccessRequest(req);
 
   // Refresh the seek-access view to show pending state
   showSeekAccessView();
@@ -14060,7 +14121,7 @@ function grantAccessRequest(reqId) {
   const req = ACCESS_REQUESTS.find(r => r.id === reqId);
   if (!req) return;
   req.status = "granted";
-  saveAccessRequests();
+  saveAccessRequest(req);
 
   // Add user to registry if not already there
   const existing = USER_REGISTRY.find(u => u.email === req.email);
@@ -14089,7 +14150,7 @@ function denyAccessRequest(reqId) {
   const req = ACCESS_REQUESTS.find(r => r.id === reqId);
   if (!req) return;
   req.status = "denied";
-  saveAccessRequests();
+  saveAccessRequest(req);
   renderAccessRequests();
   toast("Request denied.");
 }
