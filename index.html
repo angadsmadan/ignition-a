@@ -13958,6 +13958,7 @@ function loadAccessRequests() {
         market: r.market, role: r.role, status: r.status,
         ts: r.created_at,
       }));
+      typeof renderAccessRequests === "function" && renderAccessRequests();
       typeof renderManageAccess === "function" && renderManageAccess();
     } catch(e) { console.warn("Supabase access_requests load failed:", e); }
   })();
@@ -14157,7 +14158,6 @@ function denyAccessRequest(reqId) {
 
 // ── Render pending access requests panel (called from dashboard for LC) ───────
 function renderAccessRequests() {
-  loadAccessRequests();
   const pending = ACCESS_REQUESTS.filter(r => r.status === "pending");
   const el = document.getElementById("access-requests-panel");
   if (!el) return;
@@ -14314,6 +14314,7 @@ function loginAs(userId, email) {
   IS_LOGGED_IN = true;
   LOGGED_IN_EMAIL = email;
   CURRENT_USER_ID = userId;
+  try { localStorage.setItem("ignition_session", JSON.stringify({ userId, email })); } catch(e) {}
   saveState();
 
   // Hide login screen
@@ -14424,6 +14425,7 @@ function signOut() {
   IS_LOGGED_IN = false;
   LOGGED_IN_EMAIL = null;
   CURRENT_USER_ID = "sid";
+  try { localStorage.removeItem("ignition_session"); } catch(e) {}
   window.__GUEST_EMAIL__ = null;
   window.__GUEST_NAME__ = null;
   localStorage.removeItem(STORAGE_KEY);
@@ -14865,9 +14867,17 @@ async function bootWithAuth() {
   if (!USER_REGISTRY.find(u => u.id === "master")) {
     USER_REGISTRY.push({ id: "master", name: "Master Admin", email: "master@ignition.com", role: "Super Admin", fn: null, markets: MARKETS_DATA.map(m => m.id), initials: "MA", color: "bg-orange-500" });
   }
-  // Always force login
-  IS_LOGGED_IN = false;
-  LOGGED_IN_EMAIL = null;
+  // Restore session from persisted state
+  const savedSession = (() => { try { return JSON.parse(localStorage.getItem("ignition_session")); } catch(e) { return null; } })();
+  if (savedSession && savedSession.userId && savedSession.email) {
+    IS_LOGGED_IN = true;
+    LOGGED_IN_EMAIL = savedSession.email;
+    CURRENT_USER_ID = savedSession.userId;
+  } else {
+    IS_LOGGED_IN = false;
+    LOGGED_IN_EMAIL = null;
+  }
+
   // Sync USER_REGISTRY into ROLES
   USER_REGISTRY.forEach(u => {
     if (!ROLES.find(r => r.id === u.id)) ROLES.push({ id: u.id, name: u.name, role: u.role, fn: u.fn, initials: u.initials, color: u.color });
@@ -14876,7 +14886,15 @@ async function bootWithAuth() {
   // Check if this is an Auth0 redirect callback — if so, handle it and skip login screen
   const handledCallback = await handleAuth0Callback();
   if (!handledCallback) {
-    showLoginScreen();
+    if (IS_LOGGED_IN) {
+      document.getElementById("view-login").classList.add("hidden");
+      document.getElementById("top-nav").style.display = "";
+      const mbn = document.getElementById("mobile-bottom-nav");
+      if (mbn) mbn.style.display = "";
+      navigate("dashboard");
+    } else {
+      showLoginScreen();
+    }
   }
 }
 
