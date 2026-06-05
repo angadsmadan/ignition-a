@@ -476,7 +476,7 @@ const TEMPLATES = [
 ];
 
 // Tasks page view mode: 'milestones' (49 milestone rollups) or 'detailed' (all 159 raw tasks)
-let TASK_VIEW_MODE = 'milestones';
+let TASK_VIEW_MODE = 'detailed';
 let EXPANDED_MILESTONES = new Set();  // milestone ids currently expanded in milestone view
 
 
@@ -608,8 +608,31 @@ function canDeleteTask(task) {
 }
 
 // ----- Persistence ----------------------------------------------------------
+// Derive the absolute LAUNCH_DATE from the Day-0 anchor. T-90 == the day Day 0
+// was called; launch (T-0) is 90 days later. Pre-Day-0 it's a rolling placeholder.
+// This must run on every load so the launch date (and every T-N deadline) is
+// consistent across reloads and across users — it's no longer a transient global.
+function _recomputeLaunchDate() {
+  if (LAUNCH_STATE === "active" && DAY0_CALLED_AT) {
+    const d0 = new Date(DAY0_CALLED_AT);
+    LAUNCH_DATE = new Date(d0); LAUNCH_DATE.setDate(LAUNCH_DATE.getDate() + 90);
+  } else {
+    LAUNCH_DATE = new Date(); LAUNCH_DATE.setDate(LAUNCH_DATE.getDate() + 90);
+  }
+}
+
+// Write the live-computed readiness for the active market back into MARKETS_DATA
+// so it's persisted and every user sees the current number on the market cards.
+function _syncActiveMarketReadiness() {
+  const m = MARKETS_DATA.find(x => x.id === ACTIVE_MARKET_ID);
+  if (!m) return;
+  m.readiness = (typeof overallReadiness === "function") ? overallReadiness() : (m.readiness || 0);
+  m.day0CalledAt = DAY0_CALLED_AT || null;   // surface Day 0 date on the market card
+}
+
 let _saveTimer = null;
 function saveState() {
+  _syncActiveMarketReadiness();
   const payload = {
     version: 1,
     savedAt: new Date().toISOString(),
@@ -661,6 +684,9 @@ function _applyPayload(payload) {
     });
   }
   if (payload.activeMarketId) ACTIVE_MARKET_ID = payload.activeMarketId;
+  // Re-anchor the absolute launch date from the persisted Day-0 timestamp so
+  // every T-N deadline resolves correctly after a reload / for other users.
+  _recomputeLaunchDate();
 }
 
 async function loadState() {
@@ -676,6 +702,31 @@ async function loadState() {
     if (!error && data) _applyPayload(data.state);
   } catch(e) { console.warn("Supabase load failed:", e); }
   return true;
+}
+
+// Fetch every market's own stored readiness/state from its Supabase row and
+// patch the in-memory MARKETS_DATA so the Launch Control grid shows live, accurate
+// numbers for ALL markets (not just the one currently loaded). Each market's true
+// readiness lives in its own row's marketsData[self].readiness.
+async function syncAllMarketReadiness() {
+  try {
+    const { data, error } = await _sb.from("market_state").select("id,state");
+    if (error || !data) return;
+    data.forEach(row => {
+      const st = row.state || {};
+      const localM = MARKETS_DATA.find(m => m.id === row.id);
+      if (!localM) return;
+      // Prefer the market's own copy of itself inside its row
+      const selfInRow = Array.isArray(st.marketsData) ? st.marketsData.find(m => m.id === row.id) : null;
+      if (selfInRow && typeof selfInRow.readiness === "number") localM.readiness = selfInRow.readiness;
+      if (selfInRow && selfInRow.state) localM.state = selfInRow.state;
+      if (selfInRow && selfInRow.launchDate) localM.launchDate = selfInRow.launchDate;
+      // Day-0 timestamp lives at the top level of each market's state blob
+      if (st.day0CalledAt) localM.day0CalledAt = st.day0CalledAt;
+    });
+    if (typeof renderLCMarketsGrid === "function") renderLCMarketsGrid();
+    if (typeof renderMarketStatusGrid === "function") renderMarketStatusGrid();
+  } catch(e) { console.warn("syncAllMarketReadiness failed:", e); }
 }
 
 // Real-time: re-render whenever another user saves state for the active market
@@ -1118,6 +1169,12 @@ async function bootWithAuth() {
     } else {
       showLoginScreen();
     }
+  }
+  // Remove boot overlay now that the correct view is shown
+  const overlay = document.getElementById("boot-overlay");
+  if (overlay) {
+    overlay.style.opacity = "0";
+    setTimeout(() => overlay.remove(), 300);
   }
 }
 

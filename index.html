@@ -703,6 +703,14 @@
 </style>
 </head>
 <body class="text-neutral-100 min-h-screen">
+<!-- Boot overlay — covers raw HTML until JS initialises -->
+<div id="boot-overlay" style="position:fixed;inset:0;background:#0a0a0a;z-index:9999;display:flex;align-items:center;justify-content:center;transition:opacity 0.3s ease;">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:12px;">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="animation:spin 1s linear infinite;opacity:0.5"><circle cx="12" cy="12" r="10" stroke="#444" stroke-width="2"/><path d="M12 2a10 10 0 0 1 10 10" stroke="#f87171" stroke-width="2" stroke-linecap="round"/></svg>
+    <span style="font-size:12px;color:#525252;letter-spacing:0.05em;">Loading</span>
+  </div>
+</div>
+<style>@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>
 
 <!-- Jump to top -->
 <button id="jump-top" aria-label="Jump to top"
@@ -721,7 +729,7 @@
 </button>
 
 <!-- TOP NAV -->
-<header id="top-nav" class="sticky top-0 z-30 bg-neutral-950/95 backdrop-blur border-b border-neutral-900">
+<header id="top-nav" class="sticky top-0 z-30 bg-neutral-950/95 backdrop-blur border-b border-neutral-900" style="display:none">
   <div class="px-6 py-2.5 flex items-center gap-5">
     <!-- Logo -->
     <div class="flex items-center gap-3 shrink-0">
@@ -867,7 +875,7 @@
   </section>
 
   <!-- DASHBOARD VIEW -->
-  <section id="view-dashboard" class="view px-4 md:px-8 py-7">
+  <section id="view-dashboard" class="view hidden px-4 md:px-8 py-7">
 
     <!-- ===== LAUNCH CONTROL: Markets Overview (shown instead of dashboard for LC users until they pick a market) ===== -->
     <div id="lc-market-overview" class="hidden">
@@ -1144,6 +1152,10 @@
         <p class="text-sm text-neutral-500 mt-0.5">A task is only "done" when its artifact is validated. <span id="tasks-perm-hint" class="hidden text-red-400/80"></span></p>
         <!-- View mode toggle: milestone summary vs full detail vs this-week -->
         <div class="inline-flex items-center gap-0 mt-3 p-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-xs">
+          <button id="vm-detailed" onclick="setTaskViewMode('detailed')" class="px-3 py-1.5 rounded-md font-medium text-neutral-400 hover:text-neutral-100 transition flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+            All tasks <span class="vm-count text-[10px] opacity-60 ml-0.5">(159)</span>
+          </button>
           <button id="vm-week" onclick="setTaskViewMode('week')" class="px-3 py-1.5 rounded-md font-medium text-neutral-400 hover:text-neutral-100 transition flex items-center gap-1.5">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
             This week
@@ -1151,10 +1163,6 @@
           <button id="vm-milestones" onclick="setTaskViewMode('milestones')" class="px-3 py-1.5 rounded-md font-medium text-neutral-400 hover:text-neutral-100 transition flex items-center gap-1.5">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
             Milestones <span class="vm-count text-[10px] opacity-60 ml-0.5">(49)</span>
-          </button>
-          <button id="vm-detailed" onclick="setTaskViewMode('detailed')" class="px-3 py-1.5 rounded-md font-medium text-neutral-400 hover:text-neutral-100 transition flex items-center gap-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-            All tasks <span class="vm-count text-[10px] opacity-60 ml-0.5">(159)</span>
           </button>
         </div>
       </div>
@@ -7376,8 +7384,25 @@
           </div>
           <div>
             <label class="label text-neutral-500 block mb-1.5">Target launch date (optional)</label>
-            <input id="nm-date" type="date"
-              class="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-4 py-2.5 text-sm text-neutral-100 outline-none focus:border-red-500/60 transition-colors" />
+            <div class="relative" id="nm-date-wrap">
+              <input id="nm-date" type="hidden" />
+              <button type="button" id="nm-date-btn" onclick="toggleDateMenu(event)"
+                class="w-full flex items-center justify-between bg-neutral-950 border border-neutral-700 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-red-500/60 transition-colors">
+                <span id="nm-date-label" class="text-neutral-500">Select date</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+              </button>
+              <div id="nm-date-menu" class="hidden absolute z-50 mt-1 w-full bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl shadow-black/50 overflow-hidden">
+                <button type="button" onclick="setQuickDate('today')" class="w-full text-left px-4 py-2.5 text-sm text-neutral-200 hover:bg-neutral-800 transition-colors">Today</button>
+                <button type="button" onclick="setQuickDate('tomorrow')" class="w-full text-left px-4 py-2.5 text-sm text-neutral-200 hover:bg-neutral-800 transition-colors">Tomorrow</button>
+                <button type="button" onclick="setQuickDate('yesterday')" class="w-full text-left px-4 py-2.5 text-sm text-neutral-200 hover:bg-neutral-800 transition-colors">Yesterday</button>
+                <label class="w-full flex items-center justify-between px-4 py-2.5 text-sm text-neutral-200 hover:bg-neutral-800 transition-colors cursor-pointer border-t border-neutral-800" onclick="openDatePicker(event)">
+                  <span>Choose a date…</span>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#737373" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg>
+                  <input id="nm-date-native" type="date" onchange="setNativeDate(this.value)"
+                    style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;" />
+                </label>
+              </div>
+            </div>
           </div>
           <div>
             <label class="label text-neutral-500 block mb-1.5">Day 0 gate — optional roles</label>
@@ -8457,6 +8482,7 @@ function openFunction(fnName) {
   panel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+let _fnAutoSelectedFor = null;  // tracks which user the function filter was auto-applied for
 function renderTasks() {
   // ---- Filter dropdowns ----
   const fnSel = document.getElementById("filter-function");
@@ -8466,6 +8492,18 @@ function renderTasks() {
         const opt = document.createElement("option"); opt.value = f.name; opt.textContent = f.name; fnSel.appendChild(opt);
       }
     });
+  }
+  // Auto-select the current user's function once per user (function-scoped users only —
+  // Super Admins / Launch Control see all functions by default). Re-applies if the user changes.
+  if (_fnAutoSelectedFor !== CURRENT_USER_ID) {
+    _fnAutoSelectedFor = CURRENT_USER_ID;
+    const _u = currentUser();
+    if (_u && _u.fn && !isLaunchControl(CURRENT_USER_ID) && !isSuperAdmin(CURRENT_USER_ID)) {
+      const match = Array.from(fnSel.options).find(o => o.value === _u.fn);
+      fnSel.value = match ? _u.fn : "";
+    } else {
+      fnSel.value = "";
+    }
   }
   const fFn = fnSel.value;
   const fSt = document.getElementById("filter-status").value;
@@ -8683,6 +8721,8 @@ function clearTaskFilters() {
 // Helper used by dashboard cards: jump to Tasks view with a preset filter
 function openTasks(filters) {
   filters = filters || {};
+  // An explicit filter request takes precedence over per-user auto-select.
+  _fnAutoSelectedFor = CURRENT_USER_ID;
   // Reset all first
   document.getElementById("filter-function").value = filters.function || "";
   document.getElementById("filter-status").value   = filters.status   || "";
@@ -9051,9 +9091,9 @@ function callDay0() {
   if (_scFilled(DAY0_VALUES, spec) < _scFields(spec).length) return;
   LAUNCH_STATE = "active";
   DAY0_CALLED_AT = new Date().toISOString();
-  // Re-anchor LAUNCH_DATE to T-90 = today, so all T-N deadlines line up consistently
-  // (T-90 = day Day 0 is called; T-0 = 90 days later).
-  LAUNCH_DATE = new Date(); LAUNCH_DATE.setDate(LAUNCH_DATE.getDate() + 90);
+  // Re-anchor LAUNCH_DATE from the Day-0 timestamp (T-90 = today, T-0 = +90 days).
+  // Same logic runs on every load via _applyPayload, so this persists per market.
+  _recomputeLaunchDate();
   // Auto-complete tasks that are confirmed by the gate itself
   DAY0_PREREQUISITE_TASK_IDS.forEach(id => {
     const t = TASKS.find(x => x.id === id);
@@ -13391,6 +13431,61 @@ function applyMarketsNavVisibility() {
 }
 
 // ─── Feature 1: Market creation ──────────────────────────────────────────────
+// ── Custom date-picker dropdown (new market form) ────────────────────────────
+function _isoDate(d) {
+  // Local-time ISO (YYYY-MM-DD), avoids UTC off-by-one from toISOString()
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+function _prettyDate(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+}
+function toggleDateMenu(evt) {
+  if (evt) evt.stopPropagation();
+  document.getElementById("nm-date-menu").classList.toggle("hidden");
+}
+function _setDateValue(iso, label) {
+  document.getElementById("nm-date").value = iso;
+  const lbl = document.getElementById("nm-date-label");
+  lbl.textContent = label;
+  lbl.classList.remove("text-neutral-500");
+  lbl.classList.add("text-neutral-100");
+  document.getElementById("nm-date-menu").classList.add("hidden");
+}
+function setQuickDate(which) {
+  const d = new Date();
+  if (which === "tomorrow")  d.setDate(d.getDate() + 1);
+  if (which === "yesterday") d.setDate(d.getDate() - 1);
+  const iso = _isoDate(d);
+  const prefix = { today: "Today", tomorrow: "Tomorrow", yesterday: "Yesterday" }[which];
+  _setDateValue(iso, prefix + " · " + _prettyDate(iso));
+}
+function openDatePicker(evt) {
+  if (evt) evt.stopPropagation();
+  const native = document.getElementById("nm-date-native");
+  if (!native.value) native.value = _isoDate(new Date());  // default to today
+  if (typeof native.showPicker === "function") { try { native.showPicker(); return; } catch (e) {} }
+  native.focus(); native.click();
+}
+function setNativeDate(val) {
+  if (!val) return;
+  _setDateValue(val, _prettyDate(val));
+}
+function resetDatePicker() {
+  document.getElementById("nm-date").value = "";
+  document.getElementById("nm-date-native").value = "";
+  const lbl = document.getElementById("nm-date-label");
+  lbl.textContent = "Select date";
+  lbl.classList.add("text-neutral-500");
+  lbl.classList.remove("text-neutral-100");
+}
+// Close the date menu when clicking outside it
+document.addEventListener("click", (e) => {
+  const wrap = document.getElementById("nm-date-wrap");
+  const menu = document.getElementById("nm-date-menu");
+  if (wrap && menu && !wrap.contains(e.target)) menu.classList.add("hidden");
+});
+
 function createMarket() {
   if (!isSuperAdmin(CURRENT_USER_ID)) { toast("Only Super Admins can create markets."); return; }
   const name = (document.getElementById("nm-name").value || "").trim();
@@ -13414,7 +13509,7 @@ function createMarket() {
   // Reset form and advance to step 2
   document.getElementById("nm-name").value = "";
   document.getElementById("nm-code").value = "";
-  document.getElementById("nm-date").value = "";
+  resetDatePicker();
   renderMarketStatusGrid();
   renderExistingMarketsList();
   accessStep(2);
@@ -13455,7 +13550,9 @@ function renderMarketStatusGrid() {
               <div class="w-8 h-8 rounded-lg bg-neutral-800 border border-neutral-700 flex items-center justify-center mono text-[11px] text-neutral-300 font-semibold">${m.code}</div>
               <div class="text-base font-semibold text-white">${m.name}</div>
             </div>
-            ${m.launchDate ? `<div class="text-xs text-neutral-500 mono">Launch: ${m.launchDate}</div>` : ""}
+            ${m.day0CalledAt
+              ? `<div class="text-xs text-neutral-500 mono">Day 0: ${_prettyDate(m.day0CalledAt.slice(0,10))}</div>`
+              : (m.launchDate ? `<div class="text-xs text-neutral-500 mono">Launch: ${m.launchDate}</div>` : `<div class="text-xs text-amber-500/70 mono">Day 0 not called</div>`)}
           </div>
           <span class="mono text-[10px] px-2 py-1 rounded-full border ${stateClass}">${label}</span>
         </div>
@@ -13613,6 +13710,8 @@ function showLCOverview() {
   document.getElementById("lc-back-bar").classList.add("hidden");
   document.getElementById("dashboard-body").classList.add("hidden");
   renderLCMarketsGrid();
+  // Pull live readiness for every market from their own Supabase rows
+  if (typeof syncAllMarketReadiness === "function") syncAllMarketReadiness();
 }
 
 function renderLCMarketsGrid() {
@@ -13633,7 +13732,9 @@ function renderLCMarketsGrid() {
           <div class="w-9 h-9 rounded-xl bg-neutral-800 border border-neutral-700 flex items-center justify-center mono text-[11px] text-neutral-300 font-bold group-hover:border-red-500/40 transition-colors">${m.code}</div>
           <div>
             <div class="text-base font-semibold text-white">${m.name}</div>
-            ${m.launchDate ? `<div class="text-[11px] text-neutral-500 mono">${m.launchDate}</div>` : ""}
+            ${m.day0CalledAt
+              ? `<div class="text-[11px] text-neutral-500 mono">Day 0 · ${_prettyDate(m.day0CalledAt.slice(0,10))}</div>`
+              : (m.launchDate ? `<div class="text-[11px] text-neutral-500 mono">${m.launchDate}</div>` : `<div class="text-[11px] text-amber-500/70 mono">Day 0 not called</div>`)}
           </div>
         </div>
         <span class="mono text-[10px] px-2 py-1 rounded-full border ${stateClass}">${label}</span>
@@ -13683,6 +13784,7 @@ function applyLCDashboard() {
       backBar.classList.add("hidden");
       body.classList.add("hidden");
       renderLCMarketsGrid();
+      if (typeof syncAllMarketReadiness === "function") syncAllMarketReadiness();
     }
   } else {
     overview.classList.add("hidden");
