@@ -1153,7 +1153,7 @@
       <div class="grid grid-cols-4 gap-4 mb-6">
         <div class="bg-neutral-950/40 rounded-lg p-3 border border-neutral-800"><div class="label text-neutral-500">Readiness</div><div class="text-2xl font-semibold mt-1" id="fd-pct">—</div></div>
         <div class="bg-neutral-950/40 rounded-lg p-3 border border-neutral-800"><div class="label text-neutral-500">Tasks</div><div class="text-2xl font-semibold mt-1" id="fd-tasks">—</div></div>
-        <div class="bg-neutral-950/40 rounded-lg p-3 border border-neutral-800"><div class="label text-neutral-500">Missing artifacts</div><div class="text-2xl font-semibold text-amber-400 mt-1" id="fd-missing">—</div></div>
+        <div class="bg-neutral-950/40 rounded-lg p-3 border border-neutral-800"><div class="label text-neutral-500">Missing proofs</div><div class="text-2xl font-semibold text-amber-400 mt-1" id="fd-missing">—</div></div>
         <div class="bg-neutral-950/40 rounded-lg p-3 border border-neutral-800"><div class="label text-neutral-500">Risks</div><div class="text-2xl font-semibold text-rose-400 mt-1" id="fd-risks">—</div></div>
       </div>
       <div>
@@ -1168,7 +1168,7 @@
     <div class="flex items-center justify-between mb-7">
       <div>
         <h1 class="text-xl font-semibold text-neutral-100 tracking-tight">Tasks</h1>
-        <p class="text-sm text-neutral-500 mt-0.5">A task is only "done" when its artifact is validated. <span id="tasks-perm-hint" class="hidden text-red-400/80"></span></p>
+        <p class="text-sm text-neutral-500 mt-0.5">A task is only "done" when its proof is validated. <span id="tasks-perm-hint" class="hidden text-red-400/80"></span></p>
         <!-- View mode toggle: milestone summary vs full detail vs this-week -->
         <div class="inline-flex items-center gap-0 mt-3 p-0.5 rounded-lg bg-neutral-900 border border-neutral-800 text-xs">
           <button id="vm-detailed" onclick="setTaskViewMode('detailed')" class="px-3 py-1.5 rounded-md font-medium text-neutral-400 hover:text-neutral-100 transition flex items-center gap-1.5">
@@ -7851,13 +7851,13 @@
     <div id="m-scorecard" class="hidden mb-4"></div>
     <div class="border-2 border-dashed border-neutral-800 rounded-lg p-6 text-center mb-4">
       <div class="text-3xl mb-1">📎</div>
-      <div class="text-sm font-medium text-neutral-200">Drop artifact or click to upload</div>
+      <div class="text-sm font-medium text-neutral-200">Drop proof or click to upload</div>
       <div class="text-xs text-neutral-500 mt-1" id="m-upload-hint">—</div>
       <input type="file" id="m-file" class="hidden" onchange="uploadArtifact()" />
       <button onclick="document.getElementById('m-file').click()" class="mt-3 text-xs px-3 py-1.5 bg-neutral-100 text-neutral-900 rounded-md font-medium">Choose file</button>
     </div>
     <div id="m-artifact-status" class="hidden bg-green-500/10 border border-green-500/20 rounded-lg p-3 text-xs mb-4">
-      <div class="font-semibold text-green-400 mb-1">✓ Artifact uploaded</div>
+      <div class="font-semibold text-green-400 mb-1">✓ Proof uploaded</div>
       <div class="text-green-300" id="m-artifact-name">—</div>
     </div>
     <!-- Add sub-task (any user who can add tasks) -->
@@ -7924,7 +7924,7 @@
         </label>
       </div>
       <label class="block">
-        <span class="label text-neutral-500">Task name *</span>
+        <span class="label text-neutral-500" id="e-task-label">Task name *</span>
         <input id="e-task" required type="text" class="mt-1 w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm text-neutral-100" />
       </label>
       <label class="block">
@@ -7967,6 +7967,18 @@
             <option value="1">1 &mdash; low</option>
           </select>
         </label>
+      </div>
+      <!-- Super-Admin only: choose which markets this task is created in -->
+      <div id="e-markets-row" class="hidden p-3 rounded-lg bg-violet-500/10 border border-violet-500/25">
+        <div class="flex items-center justify-between mb-2">
+          <span class="text-xs font-semibold text-violet-200">Create in markets</span>
+          <label class="flex items-center gap-1.5 text-[11px] text-violet-300 cursor-pointer">
+            <input type="checkbox" id="e-markets-all" class="accent-violet-500" onchange="toggleAllMarketsSelect()" />
+            All markets
+          </label>
+        </div>
+        <div id="e-markets-list" class="grid grid-cols-2 gap-1.5"></div>
+        <div class="text-[10px] text-violet-300/70 mt-2">Tasks are added as “Not Started”. Selecting <strong>All markets</strong> also seeds this task into any markets created later.</div>
       </div>
       <div id="e-permission-warning" class="hidden p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300"></div>
       <div class="flex gap-2 pt-2">
@@ -8108,6 +8120,7 @@ function openNewTaskModal() {
   document.getElementById("e-title").textContent = "Add new task";
   document.getElementById("e-save-btn").textContent = "Create task";
   document.getElementById("e-subtask-banner").classList.add("hidden");
+  document.getElementById("e-task-label").textContent = "Task name *";
   populateFunctionSelect();
   const u = currentUser();
   // Any function user may now create a task and assign it to ANY function — the
@@ -8125,7 +8138,40 @@ function openNewTaskModal() {
   document.getElementById("e-weight").value = "2";
   document.getElementById("e-workstream").value = guessWorkstreamForFunction(fnSel.value);
   document.getElementById("e-permission-warning").classList.add("hidden");
+  // Market selector — Super Admins only, new top-level tasks only.
+  const mktRow = document.getElementById("e-markets-row");
+  if (isSuperAdmin(CURRENT_USER_ID)) {
+    populateMarketsSelect();   // defaults to the active market checked
+    mktRow.classList.remove("hidden");
+  } else {
+    mktRow.classList.add("hidden");
+  }
   document.getElementById("edit-modal").classList.remove("hidden");
+}
+
+// Build the per-market checkbox list for the task editor. Defaults to the active market.
+function populateMarketsSelect() {
+  const list = document.getElementById("e-markets-list");
+  if (!list) return;
+  list.innerHTML = MARKETS_DATA.map(m => `
+    <label class="flex items-center gap-1.5 text-xs text-neutral-200 cursor-pointer">
+      <input type="checkbox" class="e-market-cb accent-violet-500" value="${m.id}" ${m.id === ACTIVE_MARKET_ID ? "checked" : ""} onchange="syncAllMarketsCheckbox()" />
+      <span class="truncate">${m.name}${m.id === ACTIVE_MARKET_ID ? ' <span class="text-violet-300/70">(current)</span>' : ''}</span>
+    </label>`).join("");
+  syncAllMarketsCheckbox();
+}
+function toggleAllMarketsSelect() {
+  const on = document.getElementById("e-markets-all").checked;
+  document.querySelectorAll(".e-market-cb").forEach(cb => { cb.checked = on; });
+}
+function syncAllMarketsCheckbox() {
+  const cbs = Array.from(document.querySelectorAll(".e-market-cb"));
+  const all = cbs.length > 0 && cbs.every(cb => cb.checked);
+  const allCb = document.getElementById("e-markets-all");
+  if (allCb) allCb.checked = all;
+}
+function selectedMarketIds() {
+  return Array.from(document.querySelectorAll(".e-market-cb")).filter(cb => cb.checked).map(cb => cb.value);
 }
 
 // Create a sub-task under the currently-open task and (optionally) assign it to
@@ -8156,6 +8202,8 @@ function openNewSubtaskModal() {
   document.getElementById("e-permission-warning").classList.add("hidden");
   document.getElementById("e-parent-name").textContent = "#" + parent.id + " · " + parent.task;
   document.getElementById("e-subtask-banner").classList.remove("hidden");
+  document.getElementById("e-task-label").textContent = "Sub-task name *";
+  document.getElementById("e-markets-row").classList.add("hidden");
   closeModal();
   document.getElementById("edit-modal").classList.remove("hidden");
 }
@@ -8167,6 +8215,7 @@ function openEditModal(taskId) {
   editingTaskId = taskId;
   editingParentTaskId = t.parentTaskId || null;
   document.getElementById("e-mode-label").textContent = t.parentTaskId ? "EDIT SUB-TASK" : "EDIT TASK";
+  document.getElementById("e-task-label").textContent = t.parentTaskId ? "Sub-task name *" : "Task name *";
   document.getElementById("e-title").textContent = "Edit · " + t.task;
   document.getElementById("e-save-btn").textContent = "Save changes";
   populateFunctionSelect();
@@ -8181,6 +8230,8 @@ function openEditModal(taskId) {
     document.getElementById("e-parent-name").textContent = p ? ("#" + p.id + " · " + p.task) : ("#" + t.parentTaskId);
     eb.classList.remove("hidden");
   } else eb.classList.add("hidden");
+  // Market selector is for new tasks only — never when editing.
+  document.getElementById("e-markets-row").classList.add("hidden");
   document.getElementById("e-workstream").value = t.workstream || "";
   document.getElementById("e-task").value = t.task || "";
   document.getElementById("e-desc").value = t.desc || "";
@@ -8256,27 +8307,60 @@ function saveEditModal(evt) {
   const isSubtask = (editingParentTaskId != null);
 
   if (editingTaskId === null) {
-    // New task or sub-task
-    const newId = (TASKS.reduce((m, t) => Math.max(m, t.id), 0) || 0) + 1;
-    const newTask = Object.assign({ id: newId, status: "Not Started" }, data);
-    if (isSubtask) {
-      newTask.parentTaskId = editingParentTaskId;
-      // Inherit the parent's milestone grouping so it lists under the right milestone.
-      const parent = TASKS.find(x => x.id === editingParentTaskId);
-      if (parent && parent.parent_id != null) newTask.parent_id = parent.parent_id;
+    // Determine which markets this new task is created in. Only Super Admins on a
+    // new top-level task get the multi-market selector; everyone else → active market.
+    const usesSelector = !isSubtask && isSuperAdmin(CURRENT_USER_ID) &&
+      !document.getElementById("e-markets-row").classList.contains("hidden");
+    let targets = usesSelector ? selectedMarketIds() : [ACTIVE_MARKET_ID];
+    if (!targets.length) targets = [ACTIVE_MARKET_ID];
+    const includeActive = targets.includes(ACTIVE_MARKET_ID);
+    const allMarkets = MARKETS_DATA.length > 0 && MARKETS_DATA.every(m => targets.includes(m.id));
+
+    // When applied to ALL markets, stamp a stable key so this becomes part of the
+    // basic structure: stored in the global baseline and matched across every market.
+    if (allMarkets && usesSelector) {
+      data.globalKey = "g_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
     }
-    // Stamp assignment provenance (visible to everyone) for sub-tasks and any
-    // task mapped to a function other than the creator's own.
-    if (isSubtask || isCrossFunction) {
-      newTask.assignedBy = CURRENT_USER_ID;
-      newTask.assignedByName = u.name;
-      newTask.assignedByFunction = u.fn || "—";
-      newTask.assignedAt = new Date().toISOString();
+
+    // Create in the active market (in-memory) when it's a target — gives the editor
+    // immediate feedback and keeps sub-task / scorecard behaviour intact.
+    if (includeActive) {
+      const newId = (TASKS.reduce((m, t) => Math.max(m, t.id), 0) || 0) + 1;
+      const newTask = Object.assign({ id: newId, status: "Not Started" }, data);
+      if (isSubtask) {
+        newTask.parentTaskId = editingParentTaskId;
+        const parent = TASKS.find(x => x.id === editingParentTaskId);
+        if (parent && parent.parent_id != null) newTask.parent_id = parent.parent_id;
+      }
+      if (isSubtask || isCrossFunction) {
+        newTask.assignedBy = CURRENT_USER_ID;
+        newTask.assignedByName = u.name;
+        newTask.assignedByFunction = u.fn || "—";
+        newTask.assignedAt = new Date().toISOString();
+      }
+      TASKS.push(newTask);
+      const verb = isSubtask ? "added sub-task" : "added task";
+      ACTIVITY.unshift({ ts: "just now", who: u.name, what: verb + (isCrossFunction ? " → " + data.function : ""), target: data.task });
     }
-    TASKS.push(newTask);
-    const verb = isSubtask ? "added sub-task" : "added task";
-    ACTIVITY.unshift({ ts: "just now", who: u.name, what: verb + (isCrossFunction ? " → " + data.function : ""), target: data.task });
-    toast('✓ Created "' + data.task + '"' + (isCrossFunction ? " · assigned to " + data.function : ""));
+
+    // Write to every other selected market's row.
+    targets.filter(id => id !== ACTIVE_MARKET_ID).forEach(id => addTaskToMarketRow(id, data));
+
+    // If every market is selected, persist to the global baseline so future markets inherit it.
+    if (allMarkets && usesSelector) {
+      addGlobalExtraTask(data);
+      ACTIVITY.unshift({ ts: "just now", who: u.name, what: "added task to all markets", target: data.task });
+    }
+
+    // Feedback
+    if (usesSelector && targets.length > 1) {
+      toast('✓ "' + data.task + '" added to ' + (allMarkets ? "all" : targets.length) + ' markets');
+    } else if (usesSelector && !includeActive) {
+      const mk = MARKETS_DATA.find(m => m.id === targets[0]);
+      toast('✓ "' + data.task + '" added to ' + (mk ? mk.name : "selected market"));
+    } else {
+      toast('✓ Created "' + data.task + '"' + (isCrossFunction ? " · assigned to " + data.function : ""));
+    }
   } else {
     // Edit existing
     const t = TASKS.find(x => x.id === editingTaskId);
@@ -8910,7 +8994,7 @@ function openTask(id, source) {
   document.getElementById("m-proof").textContent = t.proof || "—";
   document.getElementById("m-weight").textContent = t.weight;
   document.getElementById("m-validation").textContent = t.validation || "No validation rule set";
-  document.getElementById("m-upload-hint").textContent = t.proof || "No artifact required";
+  document.getElementById("m-upload-hint").textContent = t.proof || "No proof required";
   const statusEl = document.getElementById("m-artifact-status");
   if (t.artifact) { statusEl.classList.remove("hidden"); document.getElementById("m-artifact-name").textContent = t.artifact; }
   else statusEl.classList.add("hidden");
@@ -9577,17 +9661,17 @@ function uploadArtifact() {
   const list = currentTaskSource === "milestone" ? MILESTONES : TASKS;
   const t = list.find(x => x.id === currentTaskId);
   t.artifact = input.files[0].name; t.status = "Pending Validation";
-  ACTIVITY.unshift({ ts: "just now", who: "Sid", what: "uploaded artifact to", target: t.task });
-  toast(`✓ Artifact uploaded for "${t.task}". Awaiting validation.`);
+  ACTIVITY.unshift({ ts: "just now", who: currentUser().name, what: "uploaded proof to", target: t.task });
+  toast(`✓ Proof uploaded for "${t.task}". Awaiting validation.`);
   saveState();
   openTask(currentTaskId); refresh();
 }
 function validateTask() {
   const list = currentTaskSource === "milestone" ? MILESTONES : TASKS;
   const t = list.find(x => x.id === currentTaskId);
-  if (!t.artifact) { toast("Upload an artifact first"); return; }
+  if (!t.artifact) { toast("Upload a proof first"); return; }
   t.status = "Complete";
-  ACTIVITY.unshift({ ts: "just now", who: "Sid", what: "validated", target: t.task, detail: "Complete" });
+  ACTIVITY.unshift({ ts: "just now", who: currentUser().name, what: "validated", target: t.task, detail: "Complete" });
   toast(`✓ "${t.task}" marked Complete.`);
   saveState();
   closeModal(); refresh();
@@ -9596,7 +9680,7 @@ function setStatus(s) {
   const list = currentTaskSource === "milestone" ? MILESTONES : TASKS;
   const t = list.find(x => x.id === currentTaskId);
   t.status = s;
-  ACTIVITY.unshift({ ts: "just now", who: "Sid", what: "set", target: t.task, detail: s });
+  ACTIVITY.unshift({ ts: "just now", who: currentUser().name, what: "set", target: t.task, detail: s });
   toast(`Status updated: "${t.task}" → ${s}`);
   saveState();
   closeModal(); refresh();
@@ -13718,8 +13802,37 @@ function createMarket() {
   };
   MARKETS_DATA.push(newMarket);
 
-  saveState();
-  toast("✓ Market \"" + name + "\" created — Day 0 gate generated");
+  // Seed the new market's OWN Supabase row from the pristine baseline (+ any global
+  // Super-Admin additions), all reset to "Not Started" — so no other market's edits
+  // or completion statuses leak in.
+  (async () => {
+    await loadGlobalExtraTasks();
+    const seed = freshMarketState(GLOBAL_EXTRA_TASKS);
+    const seededPayload = {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      tasks: seed.tasks,
+      milestones: seed.milestones,
+      activity: [],
+      launchState: "pre_day0",
+      day0CalledAt: null,
+      day0Values: {},
+      day0Roles: [],
+      marketsData: MARKETS_DATA,
+      userRegistry: USER_REGISTRY,
+      activeMarketId: newId,
+    };
+    try {
+      await _sb.from("market_state").upsert({
+        id: newId, state: seededPayload,
+        updated_at: new Date().toISOString(), updated_by: CURRENT_USER_ID,
+      });
+    } catch(e) { console.warn("New market seed failed:", e); }
+    // Persist the new market into the currently-active market's row too (so the grid sees it).
+    saveState();
+  })();
+
+  toast("✓ Market \"" + name + "\" created — seeded with the full baseline checklist, all Not Started");
   ACTIVITY.unshift({ ts: "just now", who: (userFromRegistry(CURRENT_USER_ID)||{name:"Admin"}).name, what: "created market", target: name });
 
   // Reset form and advance to step 2
@@ -13795,6 +13908,7 @@ function renderMarketStatusGrid() {
 function renderExistingMarketsList() {
   const el = document.getElementById("existing-markets-list");
   if (!el) return;
+  const canDelete = isSuperAdmin(CURRENT_USER_ID);
   el.innerHTML = MARKETS_DATA.map(m => {
     const stateLabel = m.state === "active" ? "LIVE" : "PRE-DAY 0";
     const stateColor = m.state === "active" ? "text-green-400" : "text-amber-400";
@@ -13805,8 +13919,87 @@ function renderExistingMarketsList() {
         ${m.launchDate ? `<div class="text-[11px] text-neutral-500 mono">${m.launchDate}</div>` : ""}
       </div>
       <span class="mono text-[10px] ${stateColor}">${stateLabel}</span>
+      ${canDelete ? `<button onclick="deleteMarket('${m.id}')" title="Delete market" class="ml-1 shrink-0 w-7 h-7 rounded-lg border border-rose-500/20 text-rose-400 hover:bg-rose-500/10 flex items-center justify-center transition-colors">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6l-2 14H7L5 6M10 11v6M14 11v6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+      </button>` : ""}
     </div>`;
   }).join("") || `<div class="text-sm text-neutral-600 px-1">No markets yet.</div>`;
+}
+
+// Super-Admin only — add a task (as Not Started) to one specific market's row,
+// with a fresh task id so ids never collide. Used by the task editor's market
+// selector for every target market other than the active one.
+async function addTaskToMarketRow(marketId, taskData) {
+  if (!marketId || marketId === GLOBAL_BASELINE_ID || marketId === ACTIVE_MARKET_ID) return;
+  try {
+    const { data } = await _sb.from("market_state").select("state").eq("id", marketId).single();
+    const st = (data && data.state) ? data.state : null;
+    if (!st) return;   // market has no saved row yet — nothing to append to
+    if (!Array.isArray(st.tasks)) st.tasks = [];
+    const nextId = (st.tasks.reduce((mx, t) => Math.max(mx, t.id || 0), 0) || 0) + 1;
+    const clean = Object.assign({ id: nextId, status: "Not Started" }, taskData);
+    delete clean.artifact; delete clean.assignedAt; delete clean.assignedBy;
+    delete clean.assignedByName; delete clean.assignedByFunction;
+    st.tasks.push(clean);
+    await _sb.from("market_state").update({ state: st }).eq("id", marketId);
+  } catch(e) { console.warn("Add task to market " + marketId + " failed:", e); }
+}
+
+// Super-Admin only — permanently delete a market and clean it up everywhere.
+function deleteMarket(marketId) {
+  if (!isSuperAdmin(CURRENT_USER_ID)) { toast("Only Super Admins can delete markets."); return; }
+  const m = MARKETS_DATA.find(x => x.id === marketId);
+  if (!m) return;
+  if (MARKETS_DATA.length <= 1) { toast("Can't delete the last remaining market."); return; }
+  if (!confirm(`Delete market "${m.name}"? This permanently removes its tasks, Day-0 state and readiness data for everyone. This cannot be undone.`)) return;
+
+  const wasActive = (ACTIVE_MARKET_ID === marketId);
+
+  // Remove from in-memory markets and detach it from every user's access list.
+  MARKETS_DATA = MARKETS_DATA.filter(x => x.id !== marketId);
+  USER_REGISTRY.forEach(u => { if (Array.isArray(u.markets)) u.markets = u.markets.filter(id => id !== marketId); });
+
+  // If the deleted market was active, switch to the first remaining one.
+  if (wasActive) {
+    ACTIVE_MARKET_ID = MARKETS_DATA[0] ? MARKETS_DATA[0].id : null;
+  }
+
+  ACTIVITY.unshift({ ts: "just now", who: (userFromRegistry(CURRENT_USER_ID) || {name:"Admin"}).name, what: "deleted market", target: m.name });
+
+  // Delete the market's own Supabase row, then scrub it from every other market's
+  // stored copy of marketsData/userRegistry so it can't reappear on the next load.
+  (async () => {
+    try {
+      await _sb.from("market_state").delete().eq("id", marketId);
+      const { data } = await _sb.from("market_state").select("id,state");
+      if (data) {
+        for (const row of data) {
+          if (row.id === GLOBAL_BASELINE_ID) continue;  // skip the global baseline row
+          const st = row.state || {};
+          let changed = false;
+          if (Array.isArray(st.marketsData)) {
+            const filtered = st.marketsData.filter(x => x.id !== marketId);
+            if (filtered.length !== st.marketsData.length) { st.marketsData = filtered; changed = true; }
+          }
+          if (Array.isArray(st.userRegistry)) {
+            st.userRegistry.forEach(u => { if (Array.isArray(u.markets)) u.markets = u.markets.filter(id => id !== marketId); });
+            changed = true;
+          }
+          if (changed) await _sb.from("market_state").update({ state: st }).eq("id", row.id);
+        }
+      }
+    } catch(e) { console.warn("Market delete propagation failed:", e); }
+    // If we deleted the market we were viewing, load the new active market's data.
+    if (wasActive && ACTIVE_MARKET_ID) { try { await loadState(); } catch(e) {} }
+    saveState();
+    if (typeof refresh === "function") refresh();
+  })();
+
+  toast(`✓ Market "${m.name}" deleted`);
+  renderExistingMarketsList();
+  renderMarketStatusGrid();
+  renderAccessMatrix();
+  if (typeof renderLCMarketsGrid === "function") renderLCMarketsGrid();
 }
 
 function renderAccessMatrix() {

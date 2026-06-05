@@ -394,6 +394,83 @@ let MILESTONES = [
   { id: 49, function: "Finance", workstream: "Tracking", task: "PnL dashboard live", desc: "Create dashboard for overall PnL", owner: "Central Finance", deadline: "T-7", proof: "Link", validation: "Manual Validation", priority: "High", weight: 2, status: "Not Started" },
 ];
 
+// ─── Pristine baseline + new-market seeding ──────────────────────────────────
+// Snapshot the original catalog NOW, before any market state is ever loaded, so a
+// new market always seeds from the pristine list — never another market's edits
+// or completion statuses. (backend.js fully evaluates before loadState() runs.)
+const BASELINE_TASKS = JSON.parse(JSON.stringify(TASKS));
+const BASELINE_MILESTONES = JSON.parse(JSON.stringify(MILESTONES));
+
+// Global task additions made by Super Admins via "add to all markets". Persisted
+// in a dedicated Supabase row so future markets inherit them too.
+const GLOBAL_BASELINE_ID = "__baseline__";
+let GLOBAL_EXTRA_TASKS = [];
+
+function _cleanTaskForSeed(t) {
+  const c = JSON.parse(JSON.stringify(t));
+  c.status = "Not Started";
+  delete c.artifact; delete c._day0Autocompleted;
+  delete c.assignedAt; delete c.assignedBy; delete c.assignedByName; delete c.assignedByFunction;
+  return c;
+}
+
+// Build a fresh, all-"Not Started" task + milestone set for a brand-new market,
+// from the pristine baseline plus any global Super-Admin additions. IDs are made
+// unique so extras never collide with baseline ids.
+function freshMarketState(extraTasks) {
+  const tasks = BASELINE_TASKS.map(_cleanTaskForSeed);
+  let nextId = tasks.reduce((mx, t) => Math.max(mx, t.id || 0), 0) + 1;
+  (extraTasks || []).forEach(t => { const c = _cleanTaskForSeed(t); c.id = nextId++; tasks.push(c); });
+  const milestones = BASELINE_MILESTONES.map(m => { const c = JSON.parse(JSON.stringify(m)); c.status = "Not Started"; return c; });
+  return { tasks, milestones };
+}
+
+async function loadGlobalExtraTasks() {
+  try {
+    const { data } = await _sb.from("market_state").select("state").eq("id", GLOBAL_BASELINE_ID).single();
+    if (data && data.state && Array.isArray(data.state.extraTasks)) GLOBAL_EXTRA_TASKS = data.state.extraTasks;
+  } catch(e) { /* row may not exist yet */ }
+  return GLOBAL_EXTRA_TASKS;
+}
+
+async function addGlobalExtraTask(task) {
+  await loadGlobalExtraTasks();
+  const clean = _cleanTaskForSeed(task);
+  if (!clean.globalKey) clean.globalKey = "g_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 7);
+  // De-dupe by stable key so the same global addition isn't stored twice.
+  if (!GLOBAL_EXTRA_TASKS.some(t => t.globalKey && t.globalKey === clean.globalKey)) {
+    GLOBAL_EXTRA_TASKS.push(clean);
+  }
+  try {
+    await _sb.from("market_state").upsert({
+      id: GLOBAL_BASELINE_ID,
+      state: { extraTasks: GLOBAL_EXTRA_TASKS },
+      updated_at: new Date().toISOString(),
+      updated_by: CURRENT_USER_ID,
+    });
+  } catch(e) { console.warn("Global extra-task save failed:", e); }
+}
+
+// Ensure the active market's task list contains every global Super-Admin addition,
+// matched by stable globalKey. Makes the additions part of every market's basic
+// structure (self-healing: any market missing one picks it up on load). Returns
+// true if anything was added.
+function _reconcileGlobalExtras() {
+  if (!Array.isArray(GLOBAL_EXTRA_TASKS) || !GLOBAL_EXTRA_TASKS.length) return false;
+  let added = false;
+  GLOBAL_EXTRA_TASKS.forEach(ex => {
+    if (!ex.globalKey) return;
+    if (!TASKS.some(t => t.globalKey === ex.globalKey)) {
+      const nextId = (TASKS.reduce((mx, t) => Math.max(mx, t.id || 0), 0) || 0) + 1;
+      const c = _cleanTaskForSeed(ex);
+      c.id = nextId; c.globalKey = ex.globalKey;
+      TASKS.push(c);
+      added = true;
+    }
+  });
+  return added;
+}
+
 const TEMPLATES = [
   {
     "id": "scrape_template",
@@ -482,9 +559,9 @@ let EXPANDED_MILESTONES = new Set();  // milestone ids currently expanded in mil
 
 let ACTIVITY = [
   { ts: "today · 10:42", who: "Sid", what: "marked", target: "AOP", detail: "Complete" },
-  { ts: "today · 09:30", who: "Fatima K.", what: "uploaded artifact to", target: "Fulfilment dynamics" },
+  { ts: "today · 09:30", who: "Fatima K.", what: "uploaded proof to", target: "Fulfilment dynamics" },
   { ts: "yesterday · 17:10", who: "Ahmed R.", what: "started", target: "Vendor master sign-up" },
-  { ts: "yesterday · 14:05", who: "Lina M.", what: "uploaded artifact to", target: "Understanding Logistics dynamics" },
+  { ts: "yesterday · 14:05", who: "Lina M.", what: "uploaded proof to", target: "Understanding Logistics dynamics" },
   { ts: "2 days ago", who: "Sid", what: "created", target: "launch", detail: "Riyadh" },
 ];
 
@@ -701,6 +778,9 @@ async function loadState() {
     const { data, error } = await _sb.from("market_state").select("state").eq("id", marketId).single();
     if (!error && data) _applyPayload(data.state);
   } catch(e) { console.warn("Supabase load failed:", e); }
+  // Make sure this market includes every global Super-Admin task addition (basic
+  // structure). If any were missing, persist so the market's row is healed.
+  if (_reconcileGlobalExtras()) saveState();
   return true;
 }
 
@@ -1134,6 +1214,7 @@ function signOut() {
 }
 
 async function bootWithAuth() {
+  await loadGlobalExtraTasks();   // Super-Admin global task additions — needed before loadState reconciles
   await loadState();
   loadAccessRequests();
   // Ensure master account always exists
