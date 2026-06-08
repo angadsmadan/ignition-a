@@ -889,14 +889,14 @@
       </div>
       <div id="lc-markets-grid" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3"></div>
 
-      <!-- Access Requests panel — Launch Control only -->
-      <div class="mt-8">
+      <!-- Access Requests panel — Super Admins only -->
+      <div id="access-requests-section" class="mt-8">
         <div class="flex items-center gap-2 mb-4">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
           <span class="text-sm font-semibold text-neutral-300">Access Requests</span>
           <span id="access-requests-badge" style="display:none;" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30"></span>
         </div>
-        <div id="access-requests-panel" style="background:#0e0e0e;border:1px solid #1e1e1e;border-radius:16px;padding:4px 16px;">
+        <div id="access-requests-panel" class="access-requests-panel" style="background:#0e0e0e;border:1px solid #1e1e1e;border-radius:16px;padding:4px 16px;">
           <div style="font-size:13px;color:#3a3a3a;text-align:center;padding:16px 0;">No pending access requests</div>
         </div>
       </div>
@@ -7462,6 +7462,17 @@
           Add person
         </button>
       </div>
+
+      <!-- Pending access requests — Super Admins can grant/deny here -->
+      <div id="access-requests-section-manage" class="mb-6">
+        <div class="flex items-center gap-2 mb-3">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f87171" stroke-width="2" stroke-linecap="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span class="text-sm font-semibold text-neutral-300">Pending Access Requests</span>
+          <span id="access-requests-badge-manage" style="display:none;" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30"></span>
+        </div>
+        <div class="access-requests-panel" style="background:#0e0e0e;border:1px solid #1e1e1e;border-radius:16px;padding:4px 16px;"></div>
+      </div>
+
       <div id="access-matrix" class="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden"></div>
     </div>
   </section>
@@ -13441,13 +13452,18 @@ function buildSeekAccessHTML() {
   const markets = MARKETS_DATA.map(m =>
     `<option value="${m.id}">${m.name}</option>`
   ).join("");
-  const roles = ["Operations", "Commercial", "Supply Chain", "Finance", "Marketing", "IT", "HR", "Viewer"].map(r =>
-    `<option value="${r}">${r}</option>`
-  ).join("");
+  const roles = [
+    "Commercial Manager", "Real Estate Manager", "Fulfilment Manager", "Growth Manager",
+    "Logistics Manager", "Pricing Manager", "Instock Manager", "Legal Manager",
+    "Finance Manager", "Procurement Manager", "On-site Manager", "Read-only"
+  ].map(r => `<option value="${r}">${r}</option>`).join("");
 
-  // Check if this email already has a pending request
+  // Check the latest request for this email (newest first), and its status
   const existing = ACCESS_REQUESTS.find(r => r.email === email && r.status === "pending");
   const granted  = ACCESS_REQUESTS.find(r => r.email === email && r.status === "granted");
+  const denied   = ACCESS_REQUESTS.find(r => r.email === email && r.status === "denied")
+                   && !existing && !granted && !window.__SEEK_FORCE_FORM__;
+  window.__SEEK_FORCE_FORM__ = false;
 
   let formOrStatus = "";
   if (granted) {
@@ -13463,6 +13479,14 @@ function buildSeekAccessHTML() {
       <div style="padding:20px 24px;border-radius:14px;background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.25);text-align:center;">
         <div style="font-size:13px;font-weight:600;color:#fde68a;margin-bottom:4px;">Request pending</div>
         <div style="font-size:13px;color:#a3a3a3;">Your request for <strong style="color:#e5e5e5;">${existing.market.toUpperCase()} · ${existing.role}</strong> has been sent. Sid, Ali or Angad will approve it shortly.</div>
+      </div>`;
+  } else if (denied) {
+    formOrStatus = `
+      <div style="padding:20px 24px;border-radius:14px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);text-align:center;">
+        <div style="font-size:24px;margin-bottom:6px;">⊘</div>
+        <div style="font-size:14px;font-weight:600;color:#fca5a5;margin-bottom:4px;">Request declined</div>
+        <div style="font-size:13px;color:#a3a3a3;margin-bottom:16px;">Your previous request wasn't approved. You can submit a new one below if you think this was a mistake.</div>
+        <button onclick="window.__SEEK_FORCE_FORM__=true;showSeekAccessView();" style="padding:10px 24px;border-radius:10px;background:#1a1a1a;border:1px solid #2a2a2a;color:#e5e5e5;font-weight:600;font-size:13px;cursor:pointer;">Request again</button>
       </div>`;
   } else {
     formOrStatus = `
@@ -13553,54 +13577,59 @@ function submitAccessRequest(email, name) {
 }
 
 function grantAccessRequest(reqId) {
+  if (!isSuperAdmin(CURRENT_USER_ID)) { toast("Only Super Admins can grant access."); return; }
   const req = ACCESS_REQUESTS.find(r => r.id === reqId);
   if (!req) return;
   req.status = "granted";
   saveAccessRequest(req);
 
+  const name = req.name || req.email.split("@")[0];
+  const fn   = roleToFn(req.role);
+  const initials = name.split(" ").map(w => w[0] || "").slice(0, 2).join("").toUpperCase();
+  const colorPool = ["bg-red-600","bg-blue-600","bg-green-600","bg-purple-600","bg-teal-600","bg-pink-600","bg-indigo-600","bg-amber-600"];
+
   // Add user to registry if not already there
   const existing = USER_REGISTRY.find(u => u.email === req.email);
   if (!existing) {
     const newId = req.email.split("@")[0].replace(/[^a-z0-9]/gi, "").toLowerCase();
-    USER_REGISTRY.push({
-      id: newId,
-      name: req.name || req.email.split("@")[0],
-      email: req.email,
-      role: req.role,
-      fn: req.role,
-      markets: [req.market]
-    });
-    saveState();
+    const color = colorPool[USER_REGISTRY.length % colorPool.length];
+    USER_REGISTRY.push({ id: newId, name, email: req.email, role: req.role, fn, markets: [req.market], initials, color });
+    // Keep ROLES in sync so the new user resolves immediately (role switcher, currentUser())
+    if (!ROLES.find(r => r.id === newId)) ROLES.push({ id: newId, name, role: req.role, fn, initials, color });
   } else {
     if (!existing.markets.includes(req.market)) existing.markets.push(req.market);
-    saveState();
   }
+  saveState();
 
-  renderAccessRequests();
-  toast("✓ Access granted to " + (req.name || req.email));
+  refreshAccessRequestsUI();
+  toast("✓ Access granted to " + name);
 }
 
 function denyAccessRequest(reqId) {
+  if (!isSuperAdmin(CURRENT_USER_ID)) { toast("Only Super Admins can deny access."); return; }
   const req = ACCESS_REQUESTS.find(r => r.id === reqId);
   if (!req) return;
   req.status = "denied";
   saveAccessRequest(req);
-  renderAccessRequests();
+  refreshAccessRequestsUI();
   toast("Request denied.");
 }
 
-// ── Render pending access requests panel (called from dashboard for LC) ───────
+// ── Render pending access requests panel(s) — Super Admins only ───────────────
+// Renders into every element with class "access-requests-panel" (LC market
+// overview + Manage Access page).
 function renderAccessRequests() {
+  const panels = document.querySelectorAll(".access-requests-panel");
+  if (!panels.length) return;
+
+  const canApprove = isSuperAdmin(CURRENT_USER_ID);
   const pending = ACCESS_REQUESTS.filter(r => r.status === "pending");
-  const el = document.getElementById("access-requests-panel");
-  if (!el) return;
 
+  let html;
   if (pending.length === 0) {
-    el.innerHTML = `<div style="font-size:13px;color:#3a3a3a;text-align:center;padding:16px 0;">No pending access requests</div>`;
-    return;
-  }
-
-  el.innerHTML = pending.map(r => `
+    html = `<div style="font-size:13px;color:#3a3a3a;text-align:center;padding:16px 0;">No pending access requests</div>`;
+  } else {
+    html = pending.map(r => `
     <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #1a1a1a;">
       <div style="width:36px;height:36px;border-radius:10px;background:#141414;border:1px solid #222;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:14px;font-weight:600;color:#a3a3a3;">
         ${(r.name || r.email)[0].toUpperCase()}
@@ -13610,7 +13639,7 @@ function renderAccessRequests() {
         <div style="font-size:11px;color:#525252;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${r.email}</div>
         <div style="font-size:11px;color:#737373;margin-top:2px;">${r.marketName} · ${r.role}</div>
       </div>
-      <div style="display:flex;gap:6px;flex-shrink:0;">
+      ${canApprove ? `<div style="display:flex;gap:6px;flex-shrink:0;">
         <button onclick="grantAccessRequest('${r.id}')"
           style="padding:6px 12px;border-radius:8px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.3);color:#86efac;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">
           Grant
@@ -13619,9 +13648,11 @@ function renderAccessRequests() {
           style="padding:6px 12px;border-radius:8px;background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.2);color:#f87171;font-size:12px;font-weight:600;cursor:pointer;">
           Deny
         </button>
-      </div>
+      </div>` : `<span style="font-size:11px;color:#525252;flex-shrink:0;">Awaiting Super Admin</span>`}
     </div>
   `).join("");
+  }
+  panels.forEach(el => { el.innerHTML = html; });
 }
 
 
@@ -13853,6 +13884,7 @@ function renderAccessView() {
   renderNewMarketForm();
   renderExistingMarketsList();
   renderAccessMatrix();
+  refreshAccessRequestsUI();
 }
 
 function renderMarketStatusGrid() {
@@ -14169,14 +14201,26 @@ function renderLCMarketsGrid() {
     </div>`;
   }).join("");
 
-  // Refresh access requests panel + badge
+  // Refresh access requests panel + badge + Super-Admin gating
+  refreshAccessRequestsUI();
+}
+
+// Shared: refresh every access-requests panel, both badges, and hide the
+// sections entirely from anyone who isn't a Super Admin (only they approve).
+function refreshAccessRequestsUI() {
   renderAccessRequests();
-  const badge = document.getElementById("access-requests-badge");
-  if (badge) {
-    const pendingCount = ACCESS_REQUESTS.filter(r => r.status === "pending").length;
-    if (pendingCount > 0) { badge.textContent = pendingCount; badge.style.display = "inline-flex"; }
-    else { badge.style.display = "none"; }
-  }
+  const pendingCount = ACCESS_REQUESTS.filter(r => r.status === "pending").length;
+  const showToApprover = isSuperAdmin(CURRENT_USER_ID);
+  [["access-requests-section", "access-requests-badge"],
+   ["access-requests-section-manage", "access-requests-badge-manage"]].forEach(([secId, badgeId]) => {
+    const sec = document.getElementById(secId);
+    if (sec) sec.style.display = showToApprover ? "" : "none";
+    const badge = document.getElementById(badgeId);
+    if (badge) {
+      if (pendingCount > 0) { badge.textContent = pendingCount; badge.style.display = "inline-flex"; }
+      else { badge.style.display = "none"; }
+    }
+  });
 }
 
 // Called whenever dashboard view is navigated to
