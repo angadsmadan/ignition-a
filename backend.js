@@ -639,6 +639,15 @@ function isManager() {
   const u = currentUser();
   return u.role && u.role.toLowerCase().includes("manager");
 }
+// Map a human role label to the function it scopes to (null = no single function).
+const ROLE_FN_MAP = {
+  "Commercial Manager":"Commercial","Real Estate Manager":"Real Estate","Fulfilment Manager":"Fulfilment",
+  "Growth Manager":"Growth","Logistics Manager":"Logistics","Pricing Manager":"Pricing",
+  "Instock Manager":"Instock","Legal Manager":"Legal","Finance Manager":"Finance",
+  "Procurement Manager":"Procurement","On-site Manager":"On-site","General Manager":null,
+  "CBO":null,"Group CBO":null,"Read-only":null,"Viewer":null
+};
+function roleToFn(role) { return ROLE_FN_MAP[role] !== undefined ? ROLE_FN_MAP[role] : null; }
 // Auto-provisioned Day-0 leadership accounts. GM = full edit; the three function
 // heads can edit tasks within their permsScope (Commercial Head extends to
 // Pricing; Fulfilment Head extends to Logistics + Warehouse).
@@ -1017,8 +1026,17 @@ function loadAccessRequests() {
         role: r.role, status: r.status,
         ts: r.created_at,
       }));
-      typeof renderAccessRequests === "function" && renderAccessRequests();
+      typeof refreshAccessRequestsUI === "function"
+        ? refreshAccessRequestsUI()
+        : (typeof renderAccessRequests === "function" && renderAccessRequests());
       typeof renderManageAccess === "function" && renderManageAccess();
+      // Live-update a waiting guest's seek-access screen when their status changes
+      if (CURRENT_USER_ID === "__guest__") {
+        const sa = document.getElementById("view-seek-access");
+        if (sa && sa.style.display !== "none" && typeof showSeekAccessView === "function") {
+          showSeekAccessView();
+        }
+      }
     } catch(e) { console.warn("Supabase access_requests load failed:", e); }
   })();
 }
